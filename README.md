@@ -75,3 +75,7 @@ python codex-image2/scripts/image_gen.py edit `
 ## 安全说明
 
 Skill 仅从 `CODEX_API_KEY` 环境变量读取密钥，不会将密钥保存到配置文件或输出日志。建议为不同服务使用独立密钥并定期轮换。
+
+## License
+
+[MIT](LICENSE)
