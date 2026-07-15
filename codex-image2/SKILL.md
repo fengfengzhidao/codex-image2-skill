@@ -5,14 +5,25 @@ description: Generate or edit raster images through a configurable OpenAI-compat
 
 # Codex Image2
 
-Generate images with the bundled standard-library CLI. Prefer this skill's script over the built-in `image_gen` tool whenever this skill is active.
+Generate images with the bundled native CLI. Prefer this skill's executable over the built-in `image_gen` tool whenever this skill is active. No Python, Node.js, Go, or package installation is required.
+
+## Select the executable
+
+Choose once from the current operating system and CPU architecture:
+
+- Windows x64: `bin/codex-image2-windows-amd64.exe`
+- Windows ARM64: `bin/codex-image2-windows-arm64.exe`
+- macOS Intel: `bin/codex-image2-darwin-amd64`
+- macOS Apple Silicon: `bin/codex-image2-darwin-arm64`
+
+On macOS, run `chmod +x <executable>` if execute permission was not preserved. Do not compile from source during normal use.
 
 ## Workflow
 
 1. Decide whether the request is a new image, an edit, or multiple distinct assets/variants.
 2. Collect the prompt, intended use, exact text, visual constraints, and avoid items.
 3. Shape the prompt only as much as needed. Preserve detailed prompts; tastefully clarify generic prompts without inventing brands, people, slogans, or unrelated objects.
-4. Run `scripts/image_gen.py generate` for one prompt, `edit` for changes to existing images, or `generate-batch` for JSONL jobs.
+4. Run the selected executable with `generate` for one prompt, `edit` for changes to existing images, or `generate-batch` for JSONL jobs.
 5. Inspect each output for subject, composition, text accuracy, constraints, and visible artifacts.
 6. If revision is needed, change one targeted aspect per iteration and re-check.
 7. Report absolute output paths, the final prompt or prompt set, size, quality, and model.
@@ -40,7 +51,7 @@ Do not add detail merely to fill the schema. For text in images, quote it verbat
 ## Generate one image
 
 ```powershell
-python "<skill-dir>\scripts\image_gen.py" generate `
+& "<skill-dir>\bin\codex-image2-windows-amd64.exe" generate `
   --prompt "A small blue nebula in a glass bottle, studio product photo" `
   --size 1024x1024 `
   --quality auto `
@@ -54,7 +65,7 @@ Use `--prompt-file` for long prompts. Use `--n` only for variants of the same pr
 Inspect each input image before editing. State its role and repeat invariants in the prompt so unrelated details do not drift.
 
 ```powershell
-python "<skill-dir>\scripts\image_gen.py" edit `
+& "<skill-dir>\bin\codex-image2-windows-amd64.exe" edit `
   --image "input/product.png" `
   --prompt "Replace only the background with a warm studio backdrop. Keep the product, label, proportions, and edges unchanged." `
   --quality auto `
@@ -68,7 +79,7 @@ Repeat `--image` for multiple reference or compositing inputs. Use `--mask mask.
 Read [references/batch-format.md](references/batch-format.md) before preparing a batch. Then run:
 
 ```powershell
-python "<skill-dir>\scripts\image_gen.py" generate-batch `
+& "<skill-dir>\bin\codex-image2-windows-amd64.exe" generate-batch `
   --input "tmp/imagegen/jobs.jsonl" `
   --out-dir "output/imagegen" `
   --concurrency 2

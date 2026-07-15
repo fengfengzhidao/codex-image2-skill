@@ -13,7 +13,7 @@
 3. 将返回的图片保存到项目中；
 4. 让 Codex 检查图片并展示最终结果。
 
-整个 Skill 只依赖 Python 标准库，不需要安装额外的 Python 包。
+仓库已经提供 Windows 和 macOS 的原生可执行文件。普通用户不需要安装 Python、Node.js、Go 或其他依赖。
 
 ## 功能
 
@@ -25,6 +25,7 @@
 - 自动重试网络超时、429、5xx 和 524 错误
 - 输出文件覆盖保护
 - API Key 脱敏，不写入 Skill 或日志
+- 内置 Windows x64/ARM64 与 macOS Intel/Apple Silicon 可执行文件
 
 ## 如何使用
 
@@ -108,10 +109,25 @@ export CODEX_API_KEY="你的API密钥"
 
 通常直接在 Codex 中指定 Skill 即可，不需要手动执行 CLI。下面的命令适合调试或自动化。
 
+选择与你的系统匹配的文件：
+
+| 系统 | 可执行文件 |
+| --- | --- |
+| Windows x64 | `codex-image2/bin/codex-image2-windows-amd64.exe` |
+| Windows ARM64 | `codex-image2/bin/codex-image2-windows-arm64.exe` |
+| macOS Intel | `codex-image2/bin/codex-image2-darwin-amd64` |
+| macOS Apple Silicon | `codex-image2/bin/codex-image2-darwin-arm64` |
+
+macOS 如果提示没有执行权限，运行：
+
+```bash
+chmod +x codex-image2/bin/codex-image2-darwin-*
+```
+
 生成图片：
 
 ```powershell
-python codex-image2/scripts/image_gen.py generate `
+& "codex-image2/bin/codex-image2-windows-amd64.exe" generate `
   --prompt "A tiny blue nebula inside a glass bottle" `
   --quality auto `
   --out "output/imagegen/nebula.png"
@@ -120,13 +136,26 @@ python codex-image2/scripts/image_gen.py generate `
 编辑图片：
 
 ```powershell
-python codex-image2/scripts/image_gen.py edit `
+& "codex-image2/bin/codex-image2-windows-amd64.exe" edit `
   --image "input.png" `
   --prompt "Replace only the background with a warm studio backdrop" `
   --out "output/imagegen/edited.png"
 ```
 
 批量任务格式和完整工作流请查看 [`codex-image2/SKILL.md`](codex-image2/SKILL.md) 和 [`batch-format.md`](codex-image2/references/batch-format.md)。
+
+## 从源码构建
+
+普通用户不需要执行这一步。开发者安装 Go 后，可以运行：
+
+```powershell
+$env:CGO_ENABLED = "0"
+$env:GOOS = "windows"
+$env:GOARCH = "amd64"
+go build -trimpath -ldflags "-s -w" -o codex-image2/bin/codex-image2-windows-amd64.exe codex-image2/src/image_gen.go
+```
+
+源码只使用 Go 标准库。
 
 ## 超简单的方式
 
