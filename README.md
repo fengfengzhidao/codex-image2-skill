@@ -1,6 +1,6 @@
 # Codex Image2 Skill
 
-让 Codex 通过自定义 API 地址和密钥，直接调用 `gpt-image-2` 生成或编辑图片。
+让 Codex 通过自定义 API 地址和密钥生成或编辑图片。服务商的模型列表中有 `gpt-image-2.5` 时优先使用，否则使用 `gpt-image-2`。
 
 ## 为什么做这个 Skill
 
@@ -8,7 +8,7 @@
 
 于是我写了这个 Skill。原理很简单：
 
-1. 从环境变量读取 API 地址和密钥；
+1. 从本地保存的配置读取 API 地址和密钥（兼容旧环境变量）；
 2. 直接调用 OpenAI 兼容的图片生成或编辑接口；
 3. 将返回的图片保存到项目中；
 4. 让 Codex 检查图片并展示最终结果。
@@ -25,6 +25,9 @@
 - 自动重试网络超时、429、5xx 和 524 错误
 - 输出文件覆盖保护
 - API Key 脱敏，不写入 Skill 或日志
+- 中文本地配置页：填写、保存、检测，无需配置环境变量或重启 Codex
+- Windows 当前用户加密保存密钥；macOS 使用系统钥匙串
+- 自动优先选择服务商列出的 `gpt-image-2.5`，兼容 `gpt-image-2` 和显式指定模型
 - 内置 Windows x64/ARM64 与 macOS Intel/Apple Silicon 可执行文件
 
 ## 如何使用
@@ -61,35 +64,38 @@ cp -R codex-image2-skill/codex-image2 ~/.codex/skills/codex-image2
 
 ### 2. 配置 API 地址和密钥
 
-在 PowerShell 中执行下面两条命令，可将环境变量永久保存到当前 Windows 用户：
-
-```powershell
-[Environment]::SetEnvironmentVariable("CODEX_API_URL", "你的API地址", "User")
-[Environment]::SetEnvironmentVariable("CODEX_API_KEY", "你的API密钥", "User")
-```
-
-例如，你的 API 地址可能是：
+安装后，直接对 Codex 说：
 
 ```text
-https://example.com
+使用 $codex-image2，帮我配置图片服务。
 ```
 
-既可以填写服务根地址，也可以填写以 `/v1` 结尾的地址，Skill 会自动整理接口路径。
+Codex 会打开一个**仅在本机运行的中文配置页**：
 
-![配置 Codex Image2 环境变量](http://image.fengfengzhidao.com/fengfeng_110920260715224031.png?key=fengfengbuzhidao)
+1. 填写服务商提供的 **API 地址** 和 **API 密钥**。
+2. 点击 **保存配置**，程序先检查当前密钥的模型权限，通过后保存。
+3. 返回 Codex，告诉它“已保存”，即可开始生图。
 
-> 配置完成后，需要完全退出并重新启动 Codex，新的环境变量才会生效。
+**无需设置环境变量，也无需因为保存配置而重启 Codex。** 首次安装 Skill 后若尚未被识别，仍可能需要重新打开 Codex。
 
-macOS / Linux 用户可以将以下内容加入自己的 shell 配置文件：
+地址可填写服务根地址、以 `/v1` 结尾的地址或完整图片接口地址，程序会自动整理。请使用 HTTPS；本机调试可使用 HTTP 回环地址。
 
-```bash
-export CODEX_API_URL="你的API地址"
-export CODEX_API_KEY="你的API密钥"
-```
+首次使用的默认地址为 `https://apinebula.ai/v1`。已经保存的自定义地址会保留。
+
+已保存密钥后，点击 **显示** 可以在本地页面查看；点击 **隐藏** 会清空展示的已保存密钥，显示 30 秒后或切换离开页面时也会自动隐藏。密钥不进入 Codex 聊天或浏览器持久存储。
+
+- **保存配置**：先请求当前密钥的模型列表。包含 `gpt-image-2` 或 `gpt-image-2.5` 时正常保存；没有这两个模型时先警告，暂不覆盖原配置。模型列表隐藏或不兼容也会提示未确认权限；确认服务支持生图后，可由用户点击 **仍然保存**。密钥鉴权失败、网络、限流或服务错误则不保存，需修正后重试。
+- **检测连接**：只请求模型列表，不发起生图请求。页面显示当前密钥能访问的模型名称和数量，突出显示生图模型及自动选择结果；修改地址或密钥后会清除旧列表。部分中转站隐藏图片模型，模型列表列出也不代表图片接口一定可用。
+- **测试生图（可能计费）**：需单独确认，生成 1 张低质量图片；不自动重试，不自动保存当前填写的配置。
+- 密钥直接输入本地页面，请勿发给 Codex 聊天。保存与检测时会向你填写的 API 地址请求模型列表；只有单独确认生图测试或正式生图时才请求生成图片。
+
+也可以双击 Skill 文件夹内的 `配置图片服务.cmd`（Windows）或 `配置图片服务.command`（macOS）。macOS 如未保留执行权限，可让 Codex 帮你打开配置页。
+
+配置页会在 15 分钟后自动失效；点击“完成配置，关闭本地服务”可提前结束。链接失效后，让 Codex 重新打开即可。
 
 ### 3. 指定 Skill 生图
 
-重新启动 Codex 后，在请求中指定 `$codex-image2` 即可：
+配置保存后，在请求中指定 `$codex-image2` 即可：
 
 ```text
 使用 $codex-image2 生成一张图片：
@@ -124,6 +130,19 @@ macOS 如果提示没有执行权限，运行：
 chmod +x codex-image2/bin/codex-image2-darwin-*
 ```
 
+打开配置页、查看状态：
+
+```powershell
+& "codex-image2/bin/codex-image2-windows-amd64.exe" configure
+& "codex-image2/bin/codex-image2-windows-amd64.exe" status
+```
+
+`configure` 会启动独立的本地进程并立即返回，不占用 Codex 的执行等待。若不能自动打开浏览器，可使用返回的 `url`；`configure --no-browser` 只返回链接。无参数运行可执行文件也会打开配置页。`status` 只输出本地配置状态、来源、地址及路径，不输出密钥，也不验证远端 API 权限。
+
+模型默认是 `auto`：以当前服务、当前密钥查询 `/v1/models`，发现 `gpt-image-2.5` 就优先使用；列表隐藏、不兼容、查询失败或未列出 2.5 时继续直接使用 `gpt-image-2`。查询最多等待 8 秒，同一批量任务复用查询结果。模型列表列出只代表服务商声明支持，实际可用性仍以图片接口为准。
+
+显式传入 `--model gpt-image-2` 或 `--model gpt-image-2.5` 可以固定模型，跳过自动选择。批量任务每行的 `model` 也保留优先级。CLI 输出返回实际使用的模型；`--dry-run` 保持零网络请求，示例载荷使用 `gpt-image-2`，并以 `model_selection: auto` 标记未查询模型可用性。
+
 生成图片：
 
 ```powershell
@@ -152,14 +171,34 @@ chmod +x codex-image2/bin/codex-image2-darwin-*
 $env:CGO_ENABLED = "0"
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
-go build -trimpath -ldflags "-s -w" -o codex-image2/bin/codex-image2-windows-amd64.exe codex-image2/src/image_gen.go
+go build -trimpath -ldflags "-s -w" -o codex-image2/bin/codex-image2-windows-amd64.exe ./codex-image2/src
 ```
 
-源码只使用 Go 标准库。
+源码只使用 Go 标准库。请构建整个 `src` 包，配置页 HTML 会自动嵌入可执行文件。
+
+```powershell
+go test ./codex-image2/src
+go vet ./codex-image2/src
+```
+
+## 配置位置与旧版兼容
+
+本地配置与 Skill 安装目录、当前项目分开，更新 Skill 不会覆盖配置：
+
+| 系统 | 配置文件 | 密钥存储 |
+| --- | --- | --- |
+| Windows | `%APPDATA%\codex-image2\config.json` | 当前 Windows 用户的 DPAPI 加密数据 |
+| macOS | `~/Library/Application Support/codex-image2/config.json` | 登录钥匙串，服务名 `codex-image2`；配置文件只保存引用 |
+
+优先级：**本地完整配置 → 旧环境变量**。本地配置存在时，旧环境变量不覆盖它；配置损坏或密钥不可读时，程序会提示修复，不会偷偷切换服务。切换 API 地址时需要重新输入对应密钥，避免混用不同服务的配置。
+
+旧用户可继续使用 `CODEX_API_URL` 与 `CODEX_API_KEY`。未配置本地文件时，API 地址默认使用 `https://apinebula.ai/v1`。通过配置页保存后即可迁移到本地配置。
+
+Linux 暂未提供预编译文件及本地凭据存储，源码构建后仍可使用旧环境变量。macOS 钥匙串可能出现系统授权或解锁提示；因运行中的任务可能仍在使用旧配置，更新密钥时会保留旧钥匙串条目，可在系统“钥匙串访问”中按服务名清理不再使用的条目。
 
 ## 超简单的方式
 
-如果觉得安装 Skill 和配置环境变量还是太麻烦，也可以直接使用我开发的网站：
+如果希望直接通过网站生图，也可以使用我开发的网站：
 
 ### [https://ffzd.ai/](https://ffzd.ai/)
 
@@ -171,7 +210,11 @@ go build -trimpath -ldflags "-s -w" -o codex-image2/bin/codex-image2-windows-amd
 
 ### 配置后仍提示没有 API Key
 
-完全退出 Codex 后重新启动。已经打开的 Codex 进程不会自动读取新设置的用户环境变量。
+让 Codex 运行 `status` 检查配置来源。新配置页保存后下一次调用即生效；如果提示凭据无法读取，请重新打开配置页保存，macOS 用户也可检查钥匙串是否已解锁。只有仍使用旧环境变量的用户，修改变量后可能需要完全退出并重新启动 Codex。
+
+### 页面提示链接失效，或者刷新后无法连接
+
+配置页有效期为 15 分钟，手动结束服务或退出系统后也会失效。让 Codex 再运行一次 `configure` 即可。页面刷新不会丢失已保存的配置；未保存的密钥需要重新输入。
 
 ### 接口返回 524 或超时
 
@@ -179,7 +222,7 @@ go build -trimpath -ldflags "-s -w" -o codex-image2/bin/codex-image2-windows-amd
 
 ### 是否支持所有中转站
 
-中转服务需要兼容以下接口，并提供 `gpt-image-2` 模型：
+中转服务需要兼容以下接口，并提供 `gpt-image-2` 或 `gpt-image-2.5` 模型：
 
 ```text
 POST /v1/images/generations
@@ -193,7 +236,8 @@ POST /v1/images/edits
 - 不要把真实 API Key 提交到 GitHub。
 - 不要把 Key 写进 Skill、提示词、截图或聊天消息。
 - 建议为不同服务使用独立密钥，并定期轮换。
-- 本 Skill 只从 `CODEX_API_KEY` 环境变量读取密钥，不会主动保存密钥。
+- 本地配置页仅监听 `127.0.0.1` 随机端口，使用临时访问凭据和来源校验，不加载外部脚本；密钥不进入页面 URL、浏览器持久存储、命令参数或程序日志。
+- Windows 使用当前用户 DPAPI 加密；macOS 使用系统钥匙串，不会将密钥明文写入项目或 Skill 文件。请勿把配置文件当作跨电脑通用备份；换电脑或系统用户后应重新配置。
 
 ## License
 

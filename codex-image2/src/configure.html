@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>配置图片服务 · Codex Image2</title>
+<style nonce="{{NONCE}}">
+:root{color-scheme:light;font:15px/1.7 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:#243143;background:#f5f6f8}
+*{box-sizing:border-box}body{margin:0}main{max-width:650px;margin:64px auto;padding:0 24px 32px}.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:14px;letter-spacing:.03em;color:#526174}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#e1eee9;color:#25664f;font-size:21px}h1{font-size:30px;line-height:1.3;letter-spacing:-.03em;margin:26px 0 10px}p{margin:0 0 20px;color:#617083}.card{margin-top:28px;background:white;border:1px solid #e0e5eb;border-radius:18px;padding:28px;box-shadow:0 7px 22px #1b354407}label{display:block;font-weight:650;margin-bottom:8px}.field{margin:0 0 22px}input{width:100%;border:1px solid #cbd4de;border-radius:9px;background:#fff;padding:12px 13px;font:inherit;color:#243143;outline:none}input:focus{border-color:#28755c;box-shadow:0 0 0 3px #28755c18}input:disabled{background:#f1f4f6}.hint{font-size:12px;color:#748194;margin-top:7px}.keyrow{display:flex;gap:8px}.keyrow input{min-width:0}.toggle{white-space:nowrap;padding:0 12px;background:#f5f7f8;color:#435467;border:1px solid #d9e0e7;border-radius:9px}.buttons{display:flex;gap:10px;flex-wrap:wrap}button{font:inherit;cursor:pointer;transition:background .15s}button:focus-visible{outline:3px solid #91bbaa;outline-offset:3px}button:disabled{cursor:wait;opacity:.55}.primary,.secondary{border-radius:9px;padding:11px 18px;font-weight:650}.primary{background:#286b54;color:white;border:1px solid #286b54}.primary:hover{background:#205740}.secondary{background:white;border:1px solid #ccd6df;color:#34485e}.secondary:hover{background:#f6f8fa}.source{font-size:12px;padding:9px 12px;margin:0 0 24px;border-radius:8px;background:#f2f5f7;color:#657487}.source.good{color:#29674f;background:#edf6f0}.message{padding:13px 15px;border:1px solid #d8e2ed;background:#f3f6fa;border-radius:9px;margin-top:20px;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}.message.success{background:#edf7f0;border-color:#cee5d5;color:#246442}.message.warning{background:#fff8e8;border-color:#efdfb8;color:#77551c}.message.error{background:#fff1ef;border-color:#efd0cb;color:#923f34}[hidden]{display:none!important}details{border-top:1px solid #e7ecf0;margin-top:25px;padding-top:18px}summary{cursor:pointer;color:#52677c;font-size:13px}details p{font-size:12px;margin:12px 0}.small{font-size:12px;padding:8px 12px}.foot{font-size:12px;color:#7b8797;margin-top:20px;line-height:1.9}.preview{display:block;max-width:100%;max-height:280px;border-radius:10px;margin-top:15px}.finish{display:block;margin:18px auto 0;background:none;border:0;color:#426854;font-size:13px;text-decoration:underline;text-underline-offset:4px}code{overflow-wrap:anywhere}.steps{font-size:12px;display:flex;gap:9px;margin:22px 0;color:#638272}.dot{color:#b5bfc9}@media(max-width:600px){main{margin:28px auto;padding:0 18px}.card{padding:22px}h1{font-size:27px}.buttons>button{flex:1}}
+</style>
+<style nonce="{{NONCE}}">
+.models{margin-top:20px;padding:16px;border:1px solid #dce4eb;border-radius:10px;background:#f8fafb}.models h2{font-size:14px;margin:0 0 5px}.models p{font-size:12px;margin:0 0 10px}.model-list{list-style:none;max-height:230px;overflow:auto;padding:0;margin:0}.model-list li{padding:7px 9px;margin:3px 0;border-radius:5px;font:12px/1.7 ui-monospace,Consolas,monospace;overflow-wrap:anywhere;white-space:pre-wrap;background:#fff;color:#536274}.model-list li.supported{background:#e7f3ec;color:#246442;font-weight:650}.confirm-save{margin-top:12px;color:#795218;border-color:#ddcda6;background:#fffaf0}
+</style>
+</head>
+<body>
+<main>
+<div class="brand"><span class="mark" aria-hidden="true">✳</span> CODEX IMAGE2</div>
+<h1>让第一张图，从这里开始</h1>
+<p>填写图片服务的地址与密钥，保存后即可回到 Codex 生图。</p>
+<div class="steps"><span>① 填写服务信息</span><span class="dot">／</span><span>② 保存配置</span><span class="dot">／</span><span>③ 开始生图</span></div>
+<section class="card" aria-label="图片服务配置">
+<div class="source" id="source" role="status">正在读取配置状态…</div>
+<form id="form" autocomplete="off">
+<div class="field"><label for="url">API 地址</label><input id="url" name="api-url" type="text" inputmode="url" spellcheck="false" placeholder="https://你的服务地址" maxlength="2048" required><div class="hint">填写服务商提供的 API 地址，带不带 /v1 都可以。</div></div>
+<div class="field"><label for="key">API 密钥</label><div class="keyrow"><input id="key" name="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="粘贴服务商提供的 API Key" maxlength="1024"><button id="toggle" class="toggle" type="button" aria-pressed="false">显示</button></div><div class="hint" id="keyhint">密钥仅由本机程序处理，不会发送到 Codex 聊天。</div></div>
+<div class="buttons"><button class="primary" id="save" type="submit">保存配置</button><button class="secondary" id="test" type="button">检测连接</button></div>
+</form>
+<div id="message" class="message" role="status" aria-live="polite" hidden></div>
+<button id="confirm-save" type="button" class="secondary confirm-save" hidden>仍然保存（尚未确认生图权限）</button>
+<section id="model-results" class="models" aria-label="当前密钥的模型列表" hidden>
+<h2 id="model-heading">当前密钥可访问的模型</h2>
+<p id="model-selection"></p><p id="models-empty" hidden>服务返回的模型列表为空，请检查当前密钥的权限。</p>
+<ul id="model-list" class="model-list"></ul>
+</section>
+<img id="preview" class="preview" alt="测试生成的图片" hidden>
+<details><summary>检测说明与生图测试</summary><p>模型自动选择：优先使用服务商列出的 gpt-image-2.5，未发现时使用 gpt-image-2。</p><p>“检测连接”只访问模型列表，不发起生图请求。部分服务隐藏图片模型，检测通过也不能保证图片生成可用。</p><button id="image-test" type="button" class="secondary small">测试生图（可能计费）</button><p>生图测试会请求 1 张 1024 × 1024、低质量图片。费用以你的服务商为准。测试当前填写的信息，不会自动保存。</p></details>
+</section>
+<div class="foot" id="storage">配置保存到当前系统用户的目录，升级 Skill 后仍然保留。无需设置环境变量，也无需重启 Codex。</div>
+<button type="button" class="finish" id="finish">完成配置，关闭本地服务</button>
+</main>
+<script nonce="{{NONCE}}">
+'use strict';
+const el=id=>document.getElementById(id);
+const token=location.hash.slice(1)||sessionStorage.getItem('codex-image2-session')||'';
+// Only the short-lived page token survives reloads. Never persist the API key.
+if(token)sessionStorage.setItem('codex-image2-session',token);
+history.replaceState(null,'',location.pathname);
+let active=true, busy=false, hasSavedKey=false, savedBase='', revealedSavedKey=false, revealedValue='', hideTimer=null, pendingSave=false;
+function message(text,level='info'){el('message').textContent=text;el('message').className='message '+level;el('message').hidden=false;}
+function setBusy(value){busy=value;for(const id of ['save','test','confirm-save','image-test','finish','url','key','toggle'])el(id).disabled=value||!active;}
+function renderModels(result){
+ el('model-list').replaceChildren();el('model-results').hidden=!result?.models_checked;
+ if(!result?.models_checked)return;
+ const models=Array.isArray(result.models)?result.models:[];
+ el('model-heading').textContent='当前密钥可访问的模型（'+models.length+'）';
+ el('model-selection').textContent=result.model?'自动选择：'+result.model+'。模型列表由服务商返回，实际能力以图片接口为准。':'未发现 gpt-image-2 或 gpt-image-2.5，请检查生图模型权限。';
+ el('models-empty').hidden=models.length!==0;
+ for(const model of models){const item=document.createElement('li');item.textContent=model;if(model==='gpt-image-2'||model==='gpt-image-2.5')item.className='supported';el('model-list').appendChild(item);}
+}
+function invalidateCheck(){pendingSave=false;el('confirm-save').hidden=true;renderModels(null);el('message').hidden=true;el('source').className='source';el('source').textContent='当前修改尚未保存，请完成检查后点击保存配置。';}
+function hideKey(){
+ clearTimeout(hideTimer);hideTimer=null;
+ if(revealedSavedKey&&el('key').value===revealedValue)el('key').value='';
+ revealedSavedKey=false;revealedValue='';el('key').type='password';el('toggle').textContent='显示';el('toggle').setAttribute('aria-pressed','false');
+}
+async function toggleKey(){
+ if(busy||!active)return;
+ if(el('key').type==='text'){hideKey();return;}
+ if(!el('key').value){
+  if(!hasSavedKey){message('请先粘贴 API 密钥，再点击显示。','warning');return;}
+  if(el('url').value.trim()!==savedBase){message('API 地址已修改。请重新输入对应密钥；显示已保存的密钥前请恢复原地址。','warning');return;}
+  setBusy(true);
+  try{const result=await call('reveal-key',{});el('key').value=result.api_key;revealedValue=result.api_key;revealedSavedKey=true;}
+  catch{message('无法显示已保存的密钥，请重新填写或解锁系统凭据存储。','error');return;}
+  finally{setBusy(false);}
+ }
+ el('key').type='text';el('toggle').textContent='隐藏';el('toggle').setAttribute('aria-pressed','true');
+ hideTimer=setTimeout(hideKey,30000);
+}
+async function call(path,body){
+ const response=await fetch('/api/'+path,{method:body===undefined?'GET':'POST',headers:{'Authorization':'Bearer '+token,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',credentials:'omit'});
+ const result=await response.json();if(!response.ok){const error=new Error(result.message||'操作失败，请重新打开配置页');error.result=result;throw error;}return result;
+}
+async function refresh(){
+ const state=await call('status');
+ hasSavedKey=Boolean(state.configured);savedBase=state.api_url||'';
+ el('url').value=state.api_url||'';
+ if(state.configured){
+  el('source').className='source good';el('source').textContent=state.source==='local'?'✓ 正在使用本地保存的配置':'✓ 已检测到环境变量配置；保存后将使用本地配置';
+  el('key').placeholder='已配置密钥；留空可沿用';el('keyhint').textContent='点击显示可查看已保存密钥，30 秒后自动隐藏。切换服务地址时请重新输入对应密钥。';
+ }else{el('source').className='source';el('source').textContent=state.source==='local'?'已有配置需要修复，请重新填写密钥':'首次使用 · 填写下方信息即可完成配置';if(state.source==='local')message(state.message,'warning');}
+ const storage=state.storage==='macos-keychain'?'密钥保存在 macOS 钥匙串。':state.storage==='windows-dpapi'?'密钥通过 Windows 当前用户加密保存。':'';
+ el('storage').textContent=storage+'配置保存在当前系统用户目录，升级 Skill 后仍然保留。保存后无需重启 Codex。';
+}
+async function perform(action,confirmUnverified=false){
+ if(busy||!active||!el('form').reportValidity())return;
+ if(confirmUnverified&&!pendingSave)return;
+ if(action==='test-image'&&!confirm('此操作会向当前服务请求生成 1 张图片，可能消耗你的 API 额度。是否继续？'))return;
+ pendingSave=false;el('confirm-save').hidden=true;setBusy(true);el('preview').hidden=true;el('preview').removeAttribute('src');if(action!=='test-image')renderModels(null);
+ message(action==='save'?'正在检查密钥和生图模型权限，通过后保存配置…':action==='test'?'正在获取当前密钥的模型列表，不会生成图片…':'正在测试生图，请稍候（最长约 150 秒）…');
+ try{
+  const body={api_url:el('url').value,api_key:revealedSavedKey&&el('key').value===revealedValue?'':el('key').value};if(action==='test-image')body.confirm_paid=true;
+  if(confirmUnverified)body.confirm_unverified=true;
+  hideKey();
+  const result=await call(action,body);
+  if(action!=='test-image')renderModels(result);
+  if(action==='save'){
+   if(result.saved){hideKey();el('key').value='';await refresh();message(result.message,result.level||'success');}
+   else{pendingSave=Boolean(result.requires_confirmation);el('confirm-save').hidden=!pendingSave;message(result.message,result.level||'warning');}
+  }
+  else{message(result.message+(action==='test'?'\n检测仅验证当前填写的信息，不会自动保存。':''),result.level);if(result.image){el('preview').src=result.image;el('preview').hidden=false;}}
+ }catch(error){if(action!=='test-image')renderModels(error.result);message(error instanceof TypeError?'无法连接本地配置服务。页面可能已过期，请回 Codex 重新打开配置页。':error.message,'error');}
+ finally{setBusy(false);}
+}
+el('form').addEventListener('submit',event=>{event.preventDefault();perform('save');});
+el('test').addEventListener('click',()=>perform('test'));
+el('confirm-save').addEventListener('click',()=>perform('save',true));
+el('image-test').addEventListener('click',()=>perform('test-image'));
+el('toggle').addEventListener('click',toggleKey);
+el('key').addEventListener('input',()=>{revealedSavedKey=false;revealedValue='';invalidateCheck();});
+el('url').addEventListener('input',()=>{if(revealedSavedKey)hideKey();invalidateCheck();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)hideKey();});
+window.addEventListener('pagehide',()=>{hideKey();el('key').value='';});
+el('finish').addEventListener('click',async()=>{if(busy)return;hideKey();el('key').value='';sessionStorage.removeItem('codex-image2-session');try{const result=await call('close',{});active=false;setBusy(false);message(result.message,'success');}catch{message('本地服务已结束，可以关闭此页面。');active=false;setBusy(false);}});
+if(!token){active=false;setBusy(false);message('配置链接缺少访问凭据。请回到 Codex，重新运行 configure 打开配置页。','error');}
+else refresh().catch(error=>{message(error instanceof TypeError?'配置页已过期或服务已结束，请回到 Codex 重新打开。':error.message,'error');});
+</script>
+</body>
+</html>

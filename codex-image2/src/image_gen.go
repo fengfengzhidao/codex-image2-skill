@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	defaultAPIURL  = "https://apinebula.com"
+	defaultAPIURL  = "https://apinebula.ai/v1"
 	defaultModel   = "gpt-image-2"
+	preferredModel = "gpt-image-2.5"
 	defaultSize    = "1024x1024"
 	defaultQuality = "auto"
 	defaultOutDir  = "output/imagegen"
@@ -33,15 +34,16 @@ const (
 var retryable = map[int]bool{429: true, 500: true, 502: true, 503: true, 504: true, 524: true}
 
 type commonArgs struct {
-	model       string
-	size        string
-	quality     string
-	n           int
-	outDir      string
-	force       bool
-	dryRun      bool
-	maxAttempts int
-	timeout     time.Duration
+	modelSelector *imageModelSelector
+	model         string
+	size          string
+	quality       string
+	n             int
+	outDir        string
+	force         bool
+	dryRun        bool
+	maxAttempts   int
+	timeout       time.Duration
 }
 
 type apiResponse struct {
@@ -152,14 +154,6 @@ func checkOutputs(paths []string, force bool) error {
 	return nil
 }
 
-func apiKey() (string, error) {
-	key := strings.TrimSpace(os.Getenv("CODEX_API_KEY"))
-	if key == "" {
-		return "", errors.New("CODEX_API_KEY is not set; set it locally, then retry")
-	}
-	return key, nil
-}
-
 func doRequest(client *http.Client, makeRequest func() (*http.Request, error), maxAttempts int) ([]byte, error) {
 	var last string
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -257,15 +251,18 @@ func generate(prompt, out string, args commonArgs) (map[string]any, error) {
 	if err := checkOutputs(paths, args.force); err != nil {
 		return nil, err
 	}
-	ep := endpoint(os.Getenv("CODEX_API_URL"), "generations")
-	payload := map[string]any{"model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality, "n": args.n}
-	if args.dryRun {
-		return map[string]any{"dry_run": true, "endpoint": ep, "payload": payload, "outputs": paths}, nil
-	}
-	key, err := apiKey()
+	config, err := resolveSettings(!args.dryRun)
 	if err != nil {
 		return nil, err
 	}
+	ep := endpoint(config.APIURL, "generations")
+	requestedModel := args.model
+	args.model = selectedImageModel(config, args)
+	payload := map[string]any{"model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality, "n": args.n}
+	if args.dryRun {
+		return map[string]any{"dry_run": true, "endpoint": ep, "payload": payload, "outputs": paths, "model_selection": requestedModel}, nil
+	}
+	key := config.APIKey
 	body, _ := json.Marshal(payload)
 	client := &http.Client{Timeout: args.timeout}
 	raw, err := doRequest(client, func() (*http.Request, error) {
@@ -306,15 +303,18 @@ func edit(prompt string, imagePaths []string, mask, out string, args commonArgs)
 	if err := checkOutputs(paths, args.force); err != nil {
 		return nil, err
 	}
-	ep := endpoint(os.Getenv("CODEX_API_URL"), "edits")
-	fields := map[string]string{"model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality, "n": strconv.Itoa(args.n)}
-	if args.dryRun {
-		return map[string]any{"dry_run": true, "endpoint": ep, "fields": fields, "images": imagePaths, "mask": mask, "outputs": paths}, nil
-	}
-	key, err := apiKey()
+	config, err := resolveSettings(!args.dryRun)
 	if err != nil {
 		return nil, err
 	}
+	ep := endpoint(config.APIURL, "edits")
+	requestedModel := args.model
+	args.model = selectedImageModel(config, args)
+	fields := map[string]string{"model": args.model, "prompt": prompt, "size": args.size, "quality": args.quality, "n": strconv.Itoa(args.n)}
+	if args.dryRun {
+		return map[string]any{"dry_run": true, "endpoint": ep, "fields": fields, "images": imagePaths, "mask": mask, "outputs": paths, "model_selection": requestedModel}, nil
+	}
+	key := config.APIKey
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for name, value := range fields {
@@ -385,7 +385,8 @@ func printJSON(value any) {
 
 func parseCommon(fs *flag.FlagSet, argv []string, args *commonArgs) error {
 	var timeout float64
-	fs.StringVar(&args.model, "model", defaultModel, "image model")
+	fs.StringVar(&args.model, "model", "auto", "auto prefers gpt-image-2.5 when listed, otherwise gpt-image-2; or specify an exact model")
+	args.modelSelector = &imageModelSelector{}
 	fs.StringVar(&args.size, "size", defaultSize, "auto or WIDTHxHEIGHT")
 	fs.StringVar(&args.quality, "quality", defaultQuality, "low, medium, high, or auto")
 	fs.IntVar(&args.n, "n", 1, "number of variants (1-10)")
@@ -563,16 +564,22 @@ func runBatch(argv []string) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Usage: codex-image2 <generate|generate-batch|edit> [options]")
+	fmt.Fprintln(os.Stderr, "Usage: codex-image2 <configure|status|generate|generate-batch|edit> [options]")
+	fmt.Fprintln(os.Stderr, "configure: 打开本地中文配置页；status: 查看配置状态（不显示密钥）")
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+		os.Args = append(os.Args, "configure")
 	}
 	var err error
 	switch os.Args[1] {
+	case "configure":
+		err = runConfigure(os.Args[2:])
+	case "status":
+		err = runStatus(os.Args[2:])
+	case "_configure-server":
+		err = serveConfiguration()
 	case "generate":
 		err = runGenerate(os.Args[2:])
 	case "generate-batch":

@@ -1,0 +1,7 @@
+*.go text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.mod text eol=lf
+*.command text eol=lf
+*.cmd text eol=crlf
+codex-image2/bin/* -text
