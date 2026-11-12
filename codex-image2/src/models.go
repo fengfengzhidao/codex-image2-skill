@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -22,17 +23,31 @@ type imageModelSelector struct {
 }
 
 func listedImageModel(ids []string) string {
+	if slices.Contains(ids, preferredModel) {
+		return preferredModel
+	}
+	if slices.Contains(ids, defaultModel) {
+		return defaultModel
+	}
+	model := ""
 	for _, id := range ids {
-		if id == preferredModel {
-			return preferredModel
+		if isImageModel(id) && (model == "" || id < model) {
+			model = id
 		}
 	}
-	return defaultModel
+	if model == "" {
+		return defaultModel
+	}
+	return model
+}
+
+func isImageModel(id string) bool {
+	return id == "gpt-image" || strings.HasPrefix(id, "gpt-image-")
 }
 
 func hasImageModel(ids []string) bool {
 	for _, id := range ids {
-		if id == preferredModel || id == defaultModel {
+		if isImageModel(id) {
 			return true
 		}
 	}
@@ -59,7 +74,10 @@ func displayModelIDs(ids []string, key string) []string {
 		if id == defaultModel {
 			return 1
 		}
-		return 2
+		if isImageModel(id) {
+			return 2
+		}
+		return 3
 	}
 	sort.Slice(result, func(i, j int) bool {
 		a, b := priority(result[i]), priority(result[j])
@@ -120,7 +138,7 @@ func (s *imageModelSelector) Select(ctx context.Context, config settings, reques
 	ids, status, err := fetchModelList(ctx, config.APIURL, config.APIKey, timeout)
 	model := defaultModel
 	if err == nil && status >= 200 && status < 300 {
-		model = listedImageModel(ids)
+		model = listedImageModel(displayModelIDs(ids, config.APIKey))
 	}
 	// Model lists may be hidden or unsupported by image gateways. Discovery
 	// failures cannot block the original direct-call fallback.

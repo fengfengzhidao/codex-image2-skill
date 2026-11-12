@@ -21,6 +21,11 @@ func TestSaveChecksPermissionsBeforeReplacingConfig(t *testing.T) {
 	}{
 		{"preferred", `{"data":[{"id":"chat-only"},{"id":"gpt-image-2.5"}]}`, preferredModel, 200, true, false},
 		{"legacy", `{"data":[{"id":"gpt-image-2"}]}`, defaultModel, 200, true, false},
+		{"new-version", `{"data":[{"id":"gpt-image-2.6"}]}`, "gpt-image-2.6", 200, true, false},
+		{"older-version", `{"data":[{"id":"gpt-image-1"}]}`, "gpt-image-1", 200, true, false},
+		{"variant", `{"data":[{"id":"gpt-image-1-mini"}]}`, "gpt-image-1-mini", 200, true, false},
+		{"family-name", `{"data":[{"id":"gpt-image"}]}`, "gpt-image", 200, true, false},
+		{"unrelated-prefix", `{"data":[{"id":"gpt-imagery"},{"id":"custom-gpt-image-2.6"}]}`, "", 200, false, true},
 		{"no-image-access", `{"data":[{"id":"chat-only"}]}`, "", 200, false, true},
 		{"empty", `{"data":[]}`, "", 200, false, true},
 		{"hidden-list", "", "", 404, false, true},
@@ -99,14 +104,14 @@ func TestConnectionReturnsCurrentKeysModelList(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer "+key {
 			t.Error("models not scoped to the submitted key")
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"id": "chat-z"}, {"id": "gpt-image-2"}, {"id": "gpt-image-2.5"}, {"id": "chat-a"}, {"id": "gpt-image-2.5"}, {"id": key}, {"id": "\n"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"id": "chat-z"}, {"id": "gpt-image-2"}, {"id": "gpt-image-2.5"}, {"id": "chat-a"}, {"id": "gpt-image-2.6"}, {"id": "gpt-image-2.5"}, {"id": key}, {"id": "\n"}}})
 	}))
 	defer provider.Close()
 	result := checkConnection(context.Background(), provider.URL+"/v1", key)
 	if !result.OK || !result.ModelsChecked || result.Model != preferredModel {
 		t.Fatal("invalid model-list result", result)
 	}
-	want := []string{preferredModel, defaultModel, "chat-a", "chat-z"}
+	want := []string{preferredModel, defaultModel, "gpt-image-2.6", "chat-a", "chat-z"}
 	if !reflect.DeepEqual(result.Models, want) {
 		t.Fatal("missing, duplicated or unsafe display model IDs", result.Models)
 	}
@@ -117,7 +122,7 @@ func TestMissingImageModelsAreWarnedWithoutClaimingUnsupported(t *testing.T) {
 		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
 		result := checkConnection(context.Background(), provider.URL+"/v1", "synthetic-key")
 		provider.Close()
-		if result.OK || result.Level != "warning" || !result.ModelsChecked || result.Model != "" || !strings.Contains(result.Message, "gpt-image-2.5") {
+		if result.OK || result.Level != "warning" || !result.ModelsChecked || result.Model != "" || !strings.Contains(result.Message, "gpt-image") {
 			t.Fatal("missing image permissions were silently accepted", result)
 		}
 	}

@@ -67,6 +67,15 @@ func TestAutomaticImageModelSelection(t *testing.T) {
 		{"both", `{"data":[{"id":"gpt-image-2"},{"id":"gpt-image-2.5"}]}`, preferredModel, 200},
 		{"preferred-only", `{"data":[{"id":"gpt-image-2.5"}]}`, preferredModel, 200},
 		{"legacy-only", `{"data":[{"id":"gpt-image-2"}]}`, defaultModel, 200},
+		{"new-version-only", `{"data":[{"id":"gpt-image-2.6"}]}`, "gpt-image-2.6", 200},
+		{"older-version-only", `{"data":[{"id":"gpt-image-1"}]}`, "gpt-image-1", 200},
+		{"variant-only", `{"data":[{"id":"gpt-image-1-mini"}]}`, "gpt-image-1-mini", 200},
+		{"family-name", `{"data":[{"id":"gpt-image"}]}`, "gpt-image", 200},
+		{"preferred-with-new-version", `{"data":[{"id":"gpt-image-2.6"},{"id":"gpt-image-2.5"}]}`, preferredModel, 200},
+		{"legacy-with-older-version", `{"data":[{"id":"gpt-image-1"},{"id":"gpt-image-2"}]}`, defaultModel, 200},
+		{"other-models-ordered", `{"data":[{"id":"gpt-image-2.6"},{"id":"gpt-image-1-mini"},{"id":"chat-model"}]}`, "gpt-image-1-mini", 200},
+		{"other-models-reversed", `{"data":[{"id":"gpt-image-1-mini"},{"id":"gpt-image-2.6"}]}`, "gpt-image-1-mini", 200},
+		{"unrelated-prefix", `{"data":[{"id":"gpt-imagery"}]}`, defaultModel, 200},
 		{"hidden", `{"data":[]}`, defaultModel, 200},
 		{"unsupported", "", defaultModel, 404},
 		{"unauthorized", "", defaultModel, 401},
@@ -121,69 +130,73 @@ func TestModelDryRunAndCanceledDiscovery(t *testing.T) {
 	}
 }
 
-func TestPreferredModelReachesGenerationEditAndBatch(t *testing.T) {
-	// Isolate the runtime configuration lookup on every supported platform.
-	t.Setenv("APPDATA", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	if runtime.GOOS == "windows" {
-		t.Setenv("USERPROFILE", t.TempDir())
-	}
-	var probes, images atomic.Int32
-	image := base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\n"))
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" && r.URL.Path == "/v1/models" {
-			probes.Add(1)
-			_, _ = io.WriteString(w, `{"data":[{"id":"gpt-image-2.5"}]}`)
-			return
-		}
-		images.Add(1)
-		model := ""
-		if r.URL.Path == "/v1/images/edits" {
-			if err := r.ParseMultipartForm(1024 * 1024); err != nil {
-				t.Error(err)
-				return
+func TestListedModelReachesGenerationEditAndBatch(t *testing.T) {
+	for _, wantModel := range []string{preferredModel, "gpt-image-2.6"} {
+		t.Run(wantModel, func(t *testing.T) {
+			// Isolate the runtime configuration lookup on every supported platform.
+			t.Setenv("APPDATA", t.TempDir())
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			if runtime.GOOS == "windows" {
+				t.Setenv("USERPROFILE", t.TempDir())
 			}
-			defer r.MultipartForm.RemoveAll()
-			model = r.FormValue("model")
-		} else if r.URL.Path == "/v1/images/generations" {
-			var payload map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&payload)
-			model, _ = payload["model"].(string)
-		} else {
-			t.Error("unexpected image endpoint", r.URL.Path)
-		}
-		if model != preferredModel {
-			t.Error("preferred model did not reach image endpoint", model)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": image}}})
-	}))
-	defer provider.Close()
-	t.Setenv("CODEX_API_URL", provider.URL)
-	t.Setenv("CODEX_API_KEY", "synthetic-generation-key")
-	args := commonArgs{model: "auto", size: defaultSize, quality: defaultQuality, n: 1, outDir: t.TempDir(), maxAttempts: 1, timeout: time.Second}
-	result, err := generate("model-test", "generation.png", args)
-	if err != nil || result["model"] != preferredModel {
-		t.Fatal("wrong reported generation model", err)
-	}
-	input := filepath.Join(t.TempDir(), "input.png")
-	_ = os.WriteFile(input, []byte("test-input"), 0600)
-	result, err = edit("model-test", []string{input}, "", "edit.png", args)
-	if err != nil || result["model"] != preferredModel {
-		t.Fatal("wrong reported edit model", err)
-	}
-	before := probes.Load()
-	jobs := filepath.Join(t.TempDir(), "jobs.jsonl")
-	_ = os.WriteFile(jobs, []byte("{\"prompt\":\"one\",\"out\":\"one.png\"}\n{\"prompt\":\"two\",\"out\":\"two.png\"}\n"), 0600)
-	if err := runBatch([]string{"--input", jobs, "--out-dir", t.TempDir(), "--concurrency", "2"}); err != nil {
-		t.Fatal(err)
-	}
-	if probes.Load()-before != 1 || images.Load() != 4 {
-		t.Fatal("batch should share model discovery", probes.Load()-before, images.Load())
-	}
-	args.dryRun = true
-	result, err = generate("model-test", "dry.png", args)
-	if err != nil || result["model_selection"] != "auto" || images.Load() != 4 || probes.Load() != before+1 {
-		t.Fatal("dry-run contacted the service or omitted auto-selection state")
+			var probes, images atomic.Int32
+			image := base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\n"))
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "GET" && r.URL.Path == "/v1/models" {
+					probes.Add(1)
+					_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"id": wantModel}}})
+					return
+				}
+				images.Add(1)
+				model := ""
+				if r.URL.Path == "/v1/images/edits" {
+					if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+						t.Error(err)
+						return
+					}
+					defer r.MultipartForm.RemoveAll()
+					model = r.FormValue("model")
+				} else if r.URL.Path == "/v1/images/generations" {
+					var payload map[string]any
+					_ = json.NewDecoder(r.Body).Decode(&payload)
+					model, _ = payload["model"].(string)
+				} else {
+					t.Error("unexpected image endpoint", r.URL.Path)
+				}
+				if model != wantModel {
+					t.Error("listed model did not reach image endpoint", model)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": image}}})
+			}))
+			defer provider.Close()
+			t.Setenv("CODEX_API_URL", provider.URL)
+			t.Setenv("CODEX_API_KEY", "synthetic-generation-key")
+			args := commonArgs{model: "auto", size: defaultSize, quality: defaultQuality, n: 1, outDir: t.TempDir(), maxAttempts: 1, timeout: time.Second}
+			result, err := generate("model-test", "generation.png", args)
+			if err != nil || result["model"] != wantModel {
+				t.Fatal("wrong reported generation model", err)
+			}
+			input := filepath.Join(t.TempDir(), "input.png")
+			_ = os.WriteFile(input, []byte("test-input"), 0600)
+			result, err = edit("model-test", []string{input}, "", "edit.png", args)
+			if err != nil || result["model"] != wantModel {
+				t.Fatal("wrong reported edit model", err)
+			}
+			before := probes.Load()
+			jobs := filepath.Join(t.TempDir(), "jobs.jsonl")
+			_ = os.WriteFile(jobs, []byte("{\"prompt\":\"one\",\"out\":\"one.png\"}\n{\"prompt\":\"two\",\"out\":\"two.png\"}\n"), 0600)
+			if err := runBatch([]string{"--input", jobs, "--out-dir", t.TempDir(), "--concurrency", "2"}); err != nil {
+				t.Fatal(err)
+			}
+			if probes.Load()-before != 1 || images.Load() != 4 {
+				t.Fatal("batch should share model discovery", probes.Load()-before, images.Load())
+			}
+			args.dryRun = true
+			result, err = generate("model-test", "dry.png", args)
+			if err != nil || result["model_selection"] != "auto" || images.Load() != 4 || probes.Load() != before+1 {
+				t.Fatal("dry-run contacted the service or omitted auto-selection state")
+			}
+		})
 	}
 }

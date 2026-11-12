@@ -263,7 +263,7 @@ func TestDiagnosticsRedirectAndModelVisibility(t *testing.T) {
 	if redirected || result.OK {
 		t.Fatal("credentialed diagnostic followed redirect")
 	}
-	for _, body := range []string{`{"data":[{"id":"gpt-image-2"}]}`, `{"data":[{"id":"gpt-image-2.5"}]}`} {
+	for _, body := range []string{`{"data":[{"id":"gpt-image-2"}]}`, `{"data":[{"id":"gpt-image-2.5"}]}`, `{"data":[{"id":"gpt-image-2.6"}]}`, `{"data":[{"id":"gpt-image-1-mini"}]}`} {
 		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
 		result := checkConnection(context.Background(), provider.URL+"/v1", "test-key")
 		provider.Close()

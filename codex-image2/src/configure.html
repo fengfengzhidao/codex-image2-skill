@@ -33,7 +33,7 @@
 <ul id="model-list" class="model-list"></ul>
 </section>
 <img id="preview" class="preview" alt="测试生成的图片" hidden>
-<details><summary>检测说明与生图测试</summary><p>模型自动选择：优先使用服务商列出的 gpt-image-2.5，未发现时使用 gpt-image-2。</p><p>“检测连接”只访问模型列表，不发起生图请求。部分服务隐藏图片模型，检测通过也不能保证图片生成可用。</p><button id="image-test" type="button" class="secondary small">测试生图（可能计费）</button><p>生图测试会请求 1 张 1024 × 1024、低质量图片。费用以你的服务商为准。测试当前填写的信息，不会自动保存。</p></details>
+<details><summary>检测说明与生图测试</summary><p>模型列表中包含任意 gpt-image 系列模型即可通过验证。自动选择优先使用 gpt-image-2.5，其次为 gpt-image-2，再按模型 ID 排序选择其他 gpt-image 模型。未发现时直接尝试 gpt-image-2。</p><p>“检测连接”只访问模型列表，不发起生图请求。部分服务隐藏图片模型，检测通过也不能保证图片生成可用。</p><button id="image-test" type="button" class="secondary small">测试生图（可能计费）</button><p>生图测试会请求 1 张 1024 × 1024、低质量图片。费用以你的服务商为准。测试当前填写的信息，不会自动保存。</p></details>
 </section>
 <div class="foot" id="storage">配置保存到当前系统用户的目录，升级 Skill 后仍然保留。无需设置环境变量，也无需重启 Codex。</div>
 <button type="button" class="finish" id="finish">完成配置，关闭本地服务</button>
@@ -53,9 +53,9 @@ function renderModels(result){
  if(!result?.models_checked)return;
  const models=Array.isArray(result.models)?result.models:[];
  el('model-heading').textContent='当前密钥可访问的模型（'+models.length+'）';
- el('model-selection').textContent=result.model?'自动选择：'+result.model+'。模型列表由服务商返回，实际能力以图片接口为准。':'未发现 gpt-image-2 或 gpt-image-2.5，请检查生图模型权限。';
+ el('model-selection').textContent=result.model?'自动选择 '+result.model+'。模型列表由服务商返回，实际能力以图片接口为准。':'未发现 gpt-image 系列模型，请检查生图模型权限。';
  el('models-empty').hidden=models.length!==0;
- for(const model of models){const item=document.createElement('li');item.textContent=model;if(model==='gpt-image-2'||model==='gpt-image-2.5')item.className='supported';el('model-list').appendChild(item);}
+ for(const model of models){const item=document.createElement('li');item.textContent=model;if(model==='gpt-image'||model.startsWith('gpt-image-'))item.className='supported';el('model-list').appendChild(item);}
 }
 function invalidateCheck(){pendingSave=false;el('confirm-save').hidden=true;renderModels(null);el('message').hidden=true;el('source').className='source';el('source').textContent='当前修改尚未保存，请完成检查后点击保存配置。';}
 function hideKey(){

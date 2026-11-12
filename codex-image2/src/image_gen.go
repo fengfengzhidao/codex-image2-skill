@@ -385,7 +385,7 @@ func printJSON(value any) {
 
 func parseCommon(fs *flag.FlagSet, argv []string, args *commonArgs) error {
 	var timeout float64
-	fs.StringVar(&args.model, "model", "auto", "auto prefers gpt-image-2.5 when listed, otherwise gpt-image-2; or specify an exact model")
+	fs.StringVar(&args.model, "model", "auto", "auto prefers listed gpt-image-2.5, then gpt-image-2, then other gpt-image models by ID; falls back to gpt-image-2; or specify an exact model")
 	args.modelSelector = &imageModelSelector{}
 	fs.StringVar(&args.size, "size", defaultSize, "auto or WIDTHxHEIGHT")
 	fs.StringVar(&args.quality, "quality", defaultQuality, "low, medium, high, or auto")

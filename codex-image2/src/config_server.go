@@ -332,13 +332,10 @@ func checkConnection(ctx context.Context, base, key string) connectionResult {
 	}
 	ids = displayModelIDs(ids, key)
 	if !hasImageModel(ids) {
-		return connectionResult{Level: "warning", Message: "当前密钥的模型列表未包含 gpt-image-2 或 gpt-image-2.5，请检查模型权限或更换密钥。部分服务可能隐藏图片模型。", Models: ids, ModelsChecked: true}
+		return connectionResult{Level: "warning", Message: "当前密钥的模型列表未包含 gpt-image 系列模型，请检查模型权限或更换密钥。部分服务可能隐藏图片模型。", Models: ids, ModelsChecked: true}
 	}
 	model := listedImageModel(ids)
-	message := "模型列表接口访问成功，已发现 gpt-image-2。实际生图仍以图片接口结果为准。"
-	if model == preferredModel {
-		message = "模型列表接口访问成功，已发现 gpt-image-2.5，将优先使用。实际生图仍以图片接口结果为准。"
-	}
+	message := "模型列表接口访问成功，已发现 " + model + "，验证通过。实际生图仍以图片接口结果为准。"
 	return connectionResult{OK: true, Level: "success", Message: message, Model: model, Models: ids, ModelsChecked: true}
 }
 

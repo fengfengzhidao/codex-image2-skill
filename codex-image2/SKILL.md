@@ -1,6 +1,6 @@
 ---
 name: codex-image2
-description: Configure a custom OpenAI-compatible image service with a local setup page, or generate and edit images through that service with automatic preference for gpt-image-2.5 when listed, falling back to gpt-image-2. Use for codex-image2 setup, API configuration, text-to-image, image edits, and batch image generation.
+description: Configure a custom OpenAI-compatible image service with a local setup page, or generate and edit images through that service with support for the gpt-image model family and automatic model selection. Use for codex-image2 setup, API configuration, text-to-image, image edits, and batch image generation.
 ---
 
 # Codex Image2
@@ -93,7 +93,7 @@ Read [references/batch-format.md](references/batch-format.md) before preparing a
 - `configured` only confirms that local credentials are readable; it does not prove remote authentication or image permissions. Do not claim API access was verified from `status` alone.
 - For first use, missing/inaccessible credentials, or a request to change settings, run `<executable> configure`. This launches a detached local configuration page and returns immediately. Do not background it with shell scripts or wait for its server to exit.
 - Tell the user to fill in the API address and key in the browser and click **保存配置**. If the browser did not open, provide the returned local `url` as a clickable link. This temporary link is valid for 15 minutes on the user's machine.
-- Saving first queries the submitted key's model list. Listed `gpt-image-2` or `gpt-image-2.5` allows a normal save. If neither is listed, or the list is unsupported/incompatible, the page warns and leaves the old configuration unchanged; only the user's explicit **仍然保存** action saves an unverified service. Authentication/network/rate-limit/server errors block saving even with this confirmation. Never click the override for the user.
+- Saving first queries the submitted key's model list. Any listed `gpt-image` family model allows a normal save. The family includes `gpt-image` and IDs starting with `gpt-image-`, such as `gpt-image-1`, `gpt-image-1-mini`, and `gpt-image-2.6`. If no family model is listed, or the list is unsupported/incompatible, the page warns and requires the user's explicit **仍然保存** action to save an unverified service. Authentication/network/rate-limit/server errors require correction before saving. Never click the override for the user.
 - Never ask for the key in chat, put it into a command, or fill it through automation. The user enters it directly in the local page; only that program handles it.
 - After the user says they saved, run `status` again and continue the original image request if configured. Do not repeatedly reopen the page or poll while waiting for user input.
 - Saved settings take effect on the next CLI invocation, with no Codex restart. Existing local config takes priority over legacy environment variables as a complete address/key pair. A damaged local config must be repaired through the setup page rather than silently falling back to another service.
@@ -105,7 +105,7 @@ Read [references/batch-format.md](references/batch-format.md) before preparing a
 
 - Let the CLI read credentials. Never inspect credential files or credential-store contents yourself, or copy keys into project files, prompts, logs, or responses. The configuration page may save keys only through the CLI's platform credential backend.
 - Legacy `CODEX_API_URL` and `CODEX_API_KEY` remain supported when no local configuration exists; their URL defaults to `https://apinebula.ai/v1`. Recommend the local setup page to new users. Existing saved URLs are preserved.
-- Default to `--model auto` (or omit the flag), size `1024x1024`, and quality `auto`. The CLI checks the configured service's model list and prefers `gpt-image-2.5` when listed; otherwise it calls `gpt-image-2` directly. An unsupported, hidden, invalid or unreachable model list does not block this fallback. Each batch shares discovery per service/credential pair.
+- Default to `--model auto` (or omit the flag), size `1024x1024`, and quality `auto`. The CLI checks the configured service's model list and prefers `gpt-image-2.5`, then `gpt-image-2`, then the first other `gpt-image` family model in lexicographic ID order. A service listing only `gpt-image-2.6` uses that model. When discovery fails or lists no family model, the CLI calls `gpt-image-2` directly. Each batch shares discovery per service/credential pair.
 - Respect an explicitly requested model using `--model <name>` or a batch row's `model`; do not add `--model gpt-image-2` by habit, as that overrides automatic preference. Report the actual model from the CLI result.
 - Dry runs never query model availability; `model_selection: auto` indicates automatic discovery was skipped, and their example payload uses `gpt-image-2`.
 - Use `--dry-run` to validate a request without network access or requiring a key.
