@@ -27,16 +27,18 @@ type keyVault interface {
 }
 
 type diskConfig struct {
-	Version int          `json:"version"`
-	APIURL  string       `json:"api_url"`
-	Secret  storedSecret `json:"secret"`
+	Version      int          `json:"version"`
+	APIURL       string       `json:"api_url"`
+	DefaultModel string       `json:"default_model,omitempty"`
+	Secret       storedSecret `json:"secret"`
 }
 
 type settings struct {
-	APIURL  string
-	APIKey  string
-	Source  string
-	Storage string
+	APIURL       string
+	APIKey       string
+	DefaultModel string
+	Source       string
+	Storage      string
 }
 
 type configStore struct {
@@ -73,7 +75,11 @@ func (s *configStore) Resolve(requireKey bool) (settings, error) {
 		if err != nil {
 			return settings{Source: "local"}, errors.New("本地 API 地址无效，请运行 configure 重新配置")
 		}
-		value := settings{APIURL: base, Source: "local", Storage: disk.Secret.Kind}
+		model, err := validateModel(disk.DefaultModel)
+		if err != nil {
+			return settings{Source: "local"}, errors.New("本地默认模型无效，请运行 configure 重新配置")
+		}
+		value := settings{APIURL: base, DefaultModel: model, Source: "local", Storage: disk.Secret.Kind}
 		if requireKey {
 			value.APIKey, err = s.vault.Open(disk.Secret)
 			if err != nil || validateKey(value.APIKey) != nil {
@@ -153,6 +159,25 @@ func normalizeAPIBase(input string) (string, error) {
 	return u.String(), nil
 }
 
+func validateModel(model string) (string, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return "", nil
+	}
+	if len(model) > 256 {
+		return "", errors.New("默认模型 ID 过长，请确认填写的是模型名称")
+	}
+	if !isImageModel(model) {
+		return "", errors.New("默认模型必须是 gpt-image 系列模型")
+	}
+	for _, c := range model {
+		if c <= 32 || c > 126 {
+			return "", errors.New("默认模型 ID 不能包含空格、换行或非英文字符")
+		}
+	}
+	return model, nil
+}
+
 func validateKey(key string) error {
 	if key == "" {
 		return errors.New("请填写 API 密钥")
@@ -168,13 +193,17 @@ func validateKey(key string) error {
 	return nil
 }
 
-func (s *configStore) Save(base, key string) error {
+func (s *configStore) Save(base, key, model string) error {
 	base, err := normalizeAPIBase(base)
 	if err != nil {
 		return err
 	}
 	key = strings.TrimSpace(key)
 	if err := validateKey(key); err != nil {
+		return err
+	}
+	model, err = validateModel(model)
+	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
@@ -190,7 +219,7 @@ func (s *configStore) Save(base, key string) error {
 			s.vault.Delete(secret)
 		}
 	}()
-	data, _ := json.MarshalIndent(diskConfig{Version: 1, APIURL: base, Secret: secret}, "", "  ")
+	data, _ := json.MarshalIndent(diskConfig{Version: 1, APIURL: base, DefaultModel: model, Secret: secret}, "", "  ")
 	file, err := os.CreateTemp(filepath.Dir(s.path), ".config-*")
 	if err != nil {
 		return errors.New("无法创建配置文件，请检查目录权限")
@@ -219,7 +248,7 @@ func (s *configStore) Save(base, key string) error {
 
 func (s *configStore) Status() map[string]any {
 	value, err := s.Resolve(true)
-	result := map[string]any{"configured": err == nil, "source": value.Source, "api_url": value.APIURL, "storage": value.Storage, "config_path": s.path}
+	result := map[string]any{"configured": err == nil, "source": value.Source, "api_url": value.APIURL, "default_model": value.DefaultModel, "storage": value.Storage, "config_path": s.path}
 	if err != nil {
 		result["message"] = err.Error()
 	}

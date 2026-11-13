@@ -186,6 +186,7 @@ func (s *configurationServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	var input struct {
 		APIURL            string `json:"api_url"`
 		APIKey            string `json:"api_key"`
+		DefaultModel      string `json:"default_model"`
 		ConfirmPaid       bool   `json:"confirm_paid"`
 		ConfirmUnverified bool   `json:"confirm_unverified"`
 	}
@@ -198,6 +199,10 @@ func (s *configurationServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	base, err := normalizeAPIBase(input.APIURL)
 	key := strings.TrimSpace(input.APIKey)
+	model, modelErr := validateModel(input.DefaultModel)
+	if err == nil {
+		err = modelErr
+	}
 	s.mu.Lock()
 	if err == nil && key == "" {
 		current, loadErr := s.store.Resolve(true)
@@ -219,8 +224,9 @@ func (s *configurationServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	s.mu.Unlock()
 	if r.URL.Path == "/api/save" {
-		result := checkConnection(r.Context(), base, key)
+		result := checkConnection(r.Context(), base, key, model)
 		result.APIURL = base
+		result.ConfiguredModel = model
 		if result.Level == "error" {
 			result.Message += "。配置未保存，原配置保持不变。"
 			writeConfigJSON(w, http.StatusUnprocessableEntity, result)
@@ -233,7 +239,7 @@ func (s *configurationServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		s.mu.Lock()
-		err = s.store.Save(base, key)
+		err = s.store.Save(base, key, model)
 		s.mu.Unlock()
 		if err != nil {
 			writeConfigJSON(w, http.StatusBadRequest, map[string]string{"message": err.Error()})
@@ -241,7 +247,11 @@ func (s *configurationServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		}
 		result.Saved = true
 		if result.OK {
-			result.Message = "配置已保存，将使用 " + result.Model + "。实际生图仍以图片接口结果为准，无需重启 Codex。"
+			if model == "" {
+				result.Message = "配置已保存，未固定默认模型，将自动选择 " + result.Model + "。实际生图仍以图片接口结果为准，无需重启 Codex。"
+			} else {
+				result.Message = "配置已保存，将优先使用 " + model + "。实际生图仍以图片接口结果为准，无需重启 Codex。"
+			}
 		} else {
 			result.Message = "配置已按你的选择保存，但尚未确认生图模型权限。\n" + result.Message
 		}
@@ -250,14 +260,15 @@ func (s *configurationServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	switch r.URL.Path {
 	case "/api/test":
-		result := checkConnection(r.Context(), base, key)
+		result := checkConnection(r.Context(), base, key, model)
+		result.ConfiguredModel = model
 		writeConfigJSON(w, http.StatusOK, result)
 	case "/api/test-image":
 		if !input.ConfirmPaid {
 			writeConfigJSON(w, http.StatusBadRequest, map[string]string{"message": "请先确认生图测试可能产生费用"})
 			return
 		}
-		writeConfigJSON(w, http.StatusOK, checkImage(r.Context(), base, key))
+		writeConfigJSON(w, http.StatusOK, checkImage(r.Context(), base, key, model))
 	default:
 		http.NotFound(w, r)
 	}
@@ -269,6 +280,7 @@ type connectionResult struct {
 	Message              string   `json:"message"`
 	Image                string   `json:"image,omitempty"`
 	Model                string   `json:"model,omitempty"`
+	ConfiguredModel      string   `json:"default_model,omitempty"`
 	Models               []string `json:"models"`
 	ModelsChecked        bool     `json:"models_checked"`
 	RequiresConfirmation bool     `json:"requires_confirmation,omitempty"`
@@ -319,7 +331,7 @@ func httpResult(status int) connectionResult {
 	return connectionResult{Level: level, Message: message}
 }
 
-func checkConnection(ctx context.Context, base, key string) connectionResult {
+func checkConnection(ctx context.Context, base, key, configuredModel string) connectionResult {
 	ids, status, err := fetchModelList(ctx, base, key, 20*time.Second)
 	if err != nil && status == 0 {
 		return networkResult(err)
@@ -335,12 +347,19 @@ func checkConnection(ctx context.Context, base, key string) connectionResult {
 		return connectionResult{Level: "warning", Message: "当前密钥的模型列表未包含 gpt-image 系列模型，请检查模型权限或更换密钥。部分服务可能隐藏图片模型。", Models: ids, ModelsChecked: true}
 	}
 	model := listedImageModel(ids)
+	if configuredModel != "" {
+		if isImageModel(configuredModel) && hasModel(ids, configuredModel) {
+			model = configuredModel
+		} else {
+			return connectionResult{Level: "warning", Message: "模型列表接口访问成功，但没有发现你配置的默认模型 " + configuredModel + "。确认保存后仍会直接使用该模型；如果服务支持但隐藏了模型列表，可以确认保存。", Model: configuredModel, Models: ids, ModelsChecked: true, RequiresConfirmation: true}
+		}
+	}
 	message := "模型列表接口访问成功，已发现 " + model + "，验证通过。实际生图仍以图片接口结果为准。"
 	return connectionResult{OK: true, Level: "success", Message: message, Model: model, Models: ids, ModelsChecked: true}
 }
 
-func checkImage(ctx context.Context, base, key string) connectionResult {
-	model := (&imageModelSelector{}).Select(ctx, settings{APIURL: base, APIKey: key}, "auto", false, 8*time.Second)
+func checkImage(ctx context.Context, base, key, configuredModel string) connectionResult {
+	model := (&imageModelSelector{}).Select(ctx, settings{APIURL: base, APIKey: key, DefaultModel: configuredModel}, "auto", false, 8*time.Second)
 	payload, _ := json.Marshal(map[string]any{"model": model, "prompt": "A small blue circle on a plain white background.", "size": "1024x1024", "quality": "low", "n": 1})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint(base, "generations"), bytes.NewReader(payload))
 	if err != nil {

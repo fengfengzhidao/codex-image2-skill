@@ -29,7 +29,7 @@ func TestNewDefaultAddress(t *testing.T) {
 
 func TestSavedKeyRevealRequiresLocalExplicitAction(t *testing.T) {
 	s := testStore(t)
-	if err := s.Save("https://example.com", "synthetic-reveal-test-key"); err != nil {
+	if err := s.Save("https://example.com", "synthetic-reveal-test-key", ""); err != nil {
 		t.Fatal(err)
 	}
 	ui := &configurationServer{store: s, host: "127.0.0.1:23456", token: randomID(), shutdown: func() {}}
@@ -66,6 +66,10 @@ func TestAutomaticImageModelSelection(t *testing.T) {
 	}{
 		{"both", `{"data":[{"id":"gpt-image-2"},{"id":"gpt-image-2.5"}]}`, preferredModel, 200},
 		{"preferred-only", `{"data":[{"id":"gpt-image-2.5"}]}`, preferredModel, 200},
+		{"flare-with-legacy", `{"data":[{"id":"gpt-image-2"},{"id":"gpt-image-2.5-flare"}]}`, "gpt-image-2.5-flare", 200},
+		{"sunburst-with-legacy", `{"data":[{"id":"gpt-image-2"},{"id":"gpt-image-2.5-sunburst"}]}`, "gpt-image-2.5-sunburst", 200},
+		{"flare-and-sunburst", `{"data":[{"id":"gpt-image-2.5-sunburst"},{"id":"gpt-image-2.5-flare"},{"id":"gpt-image-2"}]}`, "gpt-image-2.5-flare", 200},
+		{"exact-preferred-with-flare", `{"data":[{"id":"gpt-image-2.5-flare"},{"id":"gpt-image-2.5"}]}`, preferredModel, 200},
 		{"legacy-only", `{"data":[{"id":"gpt-image-2"}]}`, defaultModel, 200},
 		{"new-version-only", `{"data":[{"id":"gpt-image-2.6"}]}`, "gpt-image-2.6", 200},
 		{"older-version-only", `{"data":[{"id":"gpt-image-1"}]}`, "gpt-image-1", 200},
@@ -114,6 +118,27 @@ func TestAutomaticImageModelSelection(t *testing.T) {
 	}
 }
 
+func TestConfiguredDefaultModelSkipsDiscovery(t *testing.T) {
+	for _, configured := range []string{"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"} {
+		t.Run(configured, func(t *testing.T) {
+			calls := 0
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				_, _ = io.WriteString(w, `{"data":[{"id":"gpt-image-2"}]}`)
+			}))
+			defer provider.Close()
+			config := settings{APIURL: provider.URL + "/v1", APIKey: "synthetic-model-key", DefaultModel: configured}
+			selector := &imageModelSelector{}
+			if model := selector.Select(context.Background(), config, "auto", false, time.Second); model != configured || calls != 0 {
+				t.Fatal("configured default was not used directly", model, calls)
+			}
+			if model := selector.Select(context.Background(), config, "exact-request-model", false, time.Second); model != "exact-request-model" || calls != 0 {
+				t.Fatal("explicit model did not override configured model", model)
+			}
+		})
+	}
+}
+
 func TestModelDryRunAndCanceledDiscovery(t *testing.T) {
 	calls := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ }))
@@ -123,10 +148,17 @@ func TestModelDryRunAndCanceledDiscovery(t *testing.T) {
 	if selector.Select(context.Background(), config, "auto", true, time.Second) != defaultModel || calls != 0 {
 		t.Fatal("dry-run made network requests")
 	}
+	config.DefaultModel = "gpt-image-2.5-flare"
+	if selector.Select(context.Background(), config, "auto", true, time.Second) != config.DefaultModel || calls != 0 {
+		t.Fatal("dry-run ignored configured default or made network requests")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if (&imageModelSelector{}).Select(ctx, config, "auto", false, time.Second) != defaultModel {
-		t.Fatal("unavailable discovery blocked fallback")
+	if (&imageModelSelector{}).Select(ctx, settings{APIURL: config.APIURL, APIKey: config.APIKey}, "auto", false, time.Second) != defaultModel {
+		t.Fatal("unavailable discovery blocked default fallback")
+	}
+	if (&imageModelSelector{}).Select(ctx, config, "auto", false, time.Second) != config.DefaultModel {
+		t.Fatal("configured default was not used when discovery was unavailable")
 	}
 }
 
