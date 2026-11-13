@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -22,16 +21,28 @@ type imageModelSelector struct {
 	cache map[[32]byte]string
 }
 
+func modelPriority(id string) int {
+	switch {
+	case id == preferredModel:
+		return 0
+	case strings.HasPrefix(id, preferredModel+"-"):
+		return 1
+	case id == defaultModel:
+		return 2
+	case isImageModel(id):
+		return 3
+	default:
+		return 4
+	}
+}
+
 func listedImageModel(ids []string) string {
-	if slices.Contains(ids, preferredModel) {
-		return preferredModel
-	}
-	if slices.Contains(ids, defaultModel) {
-		return defaultModel
-	}
 	model := ""
 	for _, id := range ids {
-		if isImageModel(id) && (model == "" || id < model) {
+		if !isImageModel(id) {
+			continue
+		}
+		if model == "" || modelPriority(id) < modelPriority(model) || (modelPriority(id) == modelPriority(model) && id < model) {
 			model = id
 		}
 	}
@@ -43,6 +54,15 @@ func listedImageModel(ids []string) string {
 
 func isImageModel(id string) bool {
 	return id == "gpt-image" || strings.HasPrefix(id, "gpt-image-")
+}
+
+func hasModel(ids []string, wanted string) bool {
+	for _, id := range ids {
+		if id == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func hasImageModel(ids []string) bool {
@@ -67,20 +87,8 @@ func displayModelIDs(ids []string, key string) []string {
 		seen[id] = true
 		result = append(result, id)
 	}
-	priority := func(id string) int {
-		if id == preferredModel {
-			return 0
-		}
-		if id == defaultModel {
-			return 1
-		}
-		if isImageModel(id) {
-			return 2
-		}
-		return 3
-	}
 	sort.Slice(result, func(i, j int) bool {
-		a, b := priority(result[i]), priority(result[j])
+		a, b := modelPriority(result[i]), modelPriority(result[j])
 		if a != b {
 			return a < b
 		}
@@ -122,13 +130,16 @@ func (s *imageModelSelector) Select(ctx context.Context, config settings, reques
 	if requested != "" && requested != "auto" {
 		return requested
 	}
+	if isImageModel(config.DefaultModel) {
+		return config.DefaultModel
+	}
 	// A dry-run never performs discovery or claims that availability was checked.
 	if dryRun {
 		return defaultModel
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cacheKey := sha256.Sum256([]byte(config.APIURL + "\x00" + config.APIKey))
+	cacheKey := sha256.Sum256([]byte(config.APIURL + "\x00" + config.APIKey + "\x00" + config.DefaultModel))
 	if model, ok := s.cache[cacheKey]; ok {
 		return model
 	}

@@ -36,7 +36,7 @@ func TestSaveChecksPermissionsBeforeReplacingConfig(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s := testStore(t)
-			if err := s.Save("https://old.example", "old-valid-key"); err != nil {
+			if err := s.Save("https://old.example", "old-valid-key", ""); err != nil {
 				t.Fatal(err)
 			}
 			original, _ := os.ReadFile(s.path)
@@ -98,6 +98,32 @@ func TestSaveChecksPermissionsBeforeReplacingConfig(t *testing.T) {
 	}
 }
 
+func TestConfiguredModelMustBeListedBeforeNormalSave(t *testing.T) {
+	key := "synthetic-configured-model-key"
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"id": "gpt-image-2"}, {"id": "gpt-image-2.5-flare"}}})
+	}))
+	defer provider.Close()
+	ui := &configurationServer{store: testStore(t), host: "127.0.0.1:34568", token: randomID(), shutdown: func() {}}
+	body := map[string]any{"api_url": provider.URL, "api_key": key, "default_model": "gpt-image-2.5-sunburst"}
+	data, _ := json.Marshal(body)
+	w := apiRequest(ui, "POST", "/api/save", string(data), ui.token, "http://"+ui.host)
+	var result connectionResult
+	if json.Unmarshal(w.Body.Bytes(), &result) != nil || result.Saved || !result.RequiresConfirmation || result.Model != "gpt-image-2.5-sunburst" || result.ConfiguredModel != "gpt-image-2.5-sunburst" {
+		t.Fatal("unlisted configured model was not flagged", w.Body.String())
+	}
+	body["confirm_unverified"] = true
+	data, _ = json.Marshal(body)
+	w = apiRequest(ui, "POST", "/api/save", string(data), ui.token, "http://"+ui.host)
+	if json.Unmarshal(w.Body.Bytes(), &result) != nil || !result.Saved {
+		t.Fatal("confirmed configured model could not be saved", w.Body.String())
+	}
+	value, err := ui.store.Resolve(true)
+	if err != nil || value.DefaultModel != "gpt-image-2.5-sunburst" {
+		t.Fatal("confirmed configured model was not persisted", value, err)
+	}
+}
+
 func TestConnectionReturnsCurrentKeysModelList(t *testing.T) {
 	key := "synthetic-list-secret-key"
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +133,7 @@ func TestConnectionReturnsCurrentKeysModelList(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"id": "chat-z"}, {"id": "gpt-image-2"}, {"id": "gpt-image-2.5"}, {"id": "chat-a"}, {"id": "gpt-image-2.6"}, {"id": "gpt-image-2.5"}, {"id": key}, {"id": "\n"}}})
 	}))
 	defer provider.Close()
-	result := checkConnection(context.Background(), provider.URL+"/v1", key)
+	result := checkConnection(context.Background(), provider.URL+"/v1", key, "")
 	if !result.OK || !result.ModelsChecked || result.Model != preferredModel {
 		t.Fatal("invalid model-list result", result)
 	}
@@ -120,7 +146,7 @@ func TestConnectionReturnsCurrentKeysModelList(t *testing.T) {
 func TestMissingImageModelsAreWarnedWithoutClaimingUnsupported(t *testing.T) {
 	for _, body := range []string{`{"data":[]}`, `{"data":[{"id":"chat-model"}]}`} {
 		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
-		result := checkConnection(context.Background(), provider.URL+"/v1", "synthetic-key")
+		result := checkConnection(context.Background(), provider.URL+"/v1", "synthetic-key", "")
 		provider.Close()
 		if result.OK || result.Level != "warning" || !result.ModelsChecked || result.Model != "" || !strings.Contains(result.Message, "gpt-image") {
 			t.Fatal("missing image permissions were silently accepted", result)

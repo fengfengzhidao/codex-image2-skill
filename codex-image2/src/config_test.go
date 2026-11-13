@@ -79,14 +79,14 @@ func TestConfigPriorityAndFreshRead(t *testing.T) {
 	if err != nil || value.Source != "environment" {
 		t.Fatal("legacy config unavailable")
 	}
-	if err := s.Save("https://new.example", "new-key"); err != nil {
+	if err := s.Save("https://new.example", "new-key", ""); err != nil {
 		t.Fatal(err)
 	}
 	value, err = s.Resolve(true)
 	if err != nil || value.APIKey != "new-key" || value.APIURL != "https://new.example/v1" || value.Source != "local" {
 		t.Fatalf("local config did not override environment: %+v %v", value, err)
 	}
-	if err := s.Save("https://next.example", "next-key"); err != nil {
+	if err := s.Save("https://next.example", "next-key", ""); err != nil {
 		t.Fatal(err)
 	}
 	value, err = s.Resolve(true)
@@ -109,20 +109,51 @@ func TestConfigPriorityAndFreshRead(t *testing.T) {
 	}
 }
 
+func TestDefaultModelPersistsAndLegacyConfigRemainsValid(t *testing.T) {
+	s := testStore(t)
+	if err := s.Save("https://example.com", "model-test-key", "gpt-image-2.5-flare"); err != nil {
+		t.Fatal(err)
+	}
+	value, err := s.Resolve(true)
+	if err != nil || value.DefaultModel != "gpt-image-2.5-flare" {
+		t.Fatal("default model did not persist", value, err)
+	}
+	status, _ := json.Marshal(s.Status())
+	if !bytes.Contains(status, []byte(`"default_model":"gpt-image-2.5-flare"`)) {
+		t.Fatal("status omitted configured model", string(status))
+	}
+	if err := s.Save("https://example.com", "model-test-key", "chat-model"); err == nil {
+		t.Fatal("non-image model accepted as default")
+	}
+	value, err = s.Resolve(true)
+	if err != nil || value.DefaultModel != "gpt-image-2.5-flare" {
+		t.Fatal("invalid default model save replaced existing configuration", value, err)
+	}
+	legacy := `{"version":1,"api_url":"https://legacy.example/v1","secret":{"kind":"test-vault","data":"legacy"}}`
+	s.vault.(*memoryVault).keys["legacy"] = "legacy-key"
+	if err := os.WriteFile(s.path, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	value, err = s.Resolve(true)
+	if err != nil || value.DefaultModel != "" || value.APIKey != "legacy-key" {
+		t.Fatal("legacy config without default model is incompatible", value, err)
+	}
+}
+
 func TestFailedSavePreservesExistingConfiguration(t *testing.T) {
 	s := testStore(t)
-	if err := s.Save("https://example.com", "original-key"); err != nil {
+	if err := s.Save("https://example.com", "original-key", ""); err != nil {
 		t.Fatal(err)
 	}
 	s.vault.(*memoryVault).fail = true
-	if s.Save("https://other.example", "replacement-key") == nil {
+	if s.Save("https://other.example", "replacement-key", "") == nil {
 		t.Fatal("save should fail")
 	}
 	value, err := s.Resolve(true)
 	if err != nil || value.APIKey != "original-key" {
 		t.Fatal("failed save destroyed configuration")
 	}
-	if err := s.Save("https://example.com", "key\nheader"); err == nil {
+	if err := s.Save("https://example.com", "key\nheader", ""); err == nil {
 		t.Fatal("header injection accepted")
 	}
 }
@@ -133,7 +164,7 @@ func TestWindowsEncryptionRoundTrip(t *testing.T) {
 	}
 	s := testStore(t)
 	s.vault = platformVault{}
-	if err := s.Save("https://example.com", "fake-key-for-dpapi-test"); err != nil {
+	if err := s.Save("https://example.com", "fake-key-for-dpapi-test", ""); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(s.path)
@@ -144,7 +175,7 @@ func TestWindowsEncryptionRoundTrip(t *testing.T) {
 	if err != nil || value.APIKey != "fake-key-for-dpapi-test" {
 		t.Fatalf("DPAPI roundtrip failed: %v", err)
 	}
-	if err := s.Save("https://example.com", "replacement-dpapi-key"); err != nil {
+	if err := s.Save("https://example.com", "replacement-dpapi-key", ""); err != nil {
 		t.Fatal("atomic replacement failed", err)
 	}
 	value, err = s.Resolve(true)
@@ -239,13 +270,13 @@ func TestDiagnosticsDoNotGenerateOrLeakCredentials(t *testing.T) {
 		_, _ = io.WriteString(w, key)
 	}))
 	defer provider.Close()
-	result := checkConnection(context.Background(), provider.URL+"/v1", key)
+	result := checkConnection(context.Background(), provider.URL+"/v1", key, "")
 	if calls != 1 || result.OK || strings.Contains(result.Message, key) {
 		t.Fatal("invalid or unsafe diagnostic", result)
 	}
 	for _, code := range []int{404, 405} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(code) }))
-		result := checkConnection(context.Background(), server.URL+"/v1", key)
+		result := checkConnection(context.Background(), server.URL+"/v1", key, "")
 		server.Close()
 		if result.OK || result.Level != "warning" {
 			t.Fatal("unsupported model-list endpoint treated as invalid credentials")
@@ -259,13 +290,13 @@ func TestDiagnosticsRedirectAndModelVisibility(t *testing.T) {
 	defer destination.Close()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, destination.URL, 302) }))
 	defer origin.Close()
-	result := checkConnection(context.Background(), origin.URL+"/v1", "test-key")
+	result := checkConnection(context.Background(), origin.URL+"/v1", "test-key", "")
 	if redirected || result.OK {
 		t.Fatal("credentialed diagnostic followed redirect")
 	}
 	for _, body := range []string{`{"data":[{"id":"gpt-image-2"}]}`, `{"data":[{"id":"gpt-image-2.5"}]}`, `{"data":[{"id":"gpt-image-2.6"}]}`, `{"data":[{"id":"gpt-image-1-mini"}]}`} {
 		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
-		result := checkConnection(context.Background(), provider.URL+"/v1", "test-key")
+		result := checkConnection(context.Background(), provider.URL+"/v1", "test-key", "")
 		provider.Close()
 		if !result.OK || !strings.Contains(result.Message, "实际生图") {
 			t.Fatal("model list misrepresents image support", result)
@@ -290,7 +321,7 @@ func TestPaidImageDiagnosticOneRequest(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": image}}})
 	}))
 	defer provider.Close()
-	result := checkImage(context.Background(), provider.URL+"/v1", "test-key")
+	result := checkImage(context.Background(), provider.URL+"/v1", "test-key", "")
 	if !result.OK || calls != 1 || result.Model != preferredModel || !strings.HasPrefix(result.Image, "data:image/png;base64,") {
 		t.Fatal("image test failed", result)
 	}
@@ -303,7 +334,7 @@ func TestPaidImageDiagnosticOneRequest(t *testing.T) {
 		w.WriteHeader(524)
 	}))
 	defer failed.Close()
-	result = checkImage(context.Background(), failed.URL+"/v1", "test-key")
+	result = checkImage(context.Background(), failed.URL+"/v1", "test-key", "")
 	if result.OK || calls != 2 {
 		t.Fatal("paid diagnostic unexpectedly retried")
 	}
@@ -345,7 +376,7 @@ func TestGenerationEditAndBatchUseSavedConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Save(provider.URL, "saved-test-key"); err != nil {
+	if err := s.Save(provider.URL, "saved-test-key", ""); err != nil {
 		t.Fatal(err)
 	}
 	outDir := t.TempDir()
